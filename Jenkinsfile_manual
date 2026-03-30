@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'TARGET_ENV', choices: ['main', 'dev'], description: 'Select environment')
+    }
+
+    tools {
+        nodejs 'node'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: "${params.TARGET_ENV}",
+                    credentialsId: 'github-creds',
+                    url: 'https://github.com/nastya652/cicd-pipeline-nastya.git'
+            }
+        }
+
+        stage('Set variables') {
+            steps {
+                script {
+                    if (params.TARGET_ENV == 'main') {
+                        env.APP_PORT = '3000'
+                        env.IMAGE_NAME = 'nodemain:v1.0'
+                        env.CONTAINER_NAME = 'nodemain'
+                    } else if (params.TARGET_ENV == 'dev') {
+                        env.APP_PORT = '3001'
+                        env.IMAGE_NAME = 'nodedev:v1.0'
+                        env.CONTAINER_NAME = 'nodedev'
+                    } else {
+                        error("Unsupported env: ${params.TARGET_ENV}")
+                    }
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'npm install'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'npm test || true'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t ${IMAGE_NAME} .'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    docker rm -f ${CONTAINER_NAME} || true
+                    docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:3000 ${IMAGE_NAME}
+                '''
+            }
+        }
+    }
+}
